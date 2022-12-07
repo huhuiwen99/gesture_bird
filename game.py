@@ -7,14 +7,15 @@ import numpy as np
 import keras
 from keras.models import load_model
 from skimage.transform import resize,pyramid_reduce
+import PIL
 from PIL import Image
 from pygame.locals import *
 
-print('hello')
-model=load_model('CNNmodel.h5')
-sign=0
 
-# screen setting
+model = load_model('CNNmodel.h5')
+sign = 0
+
+#screen sets
 FPS = 30
 screen_width  = 640
 screen_height = 450
@@ -44,8 +45,8 @@ PLAYERS_LIST = (
 )
 # backgrounds
 BACKGROUNDS_LIST = (
-    'assets/sprites/background-day.png',
-    'assets/sprites/background-night.png',
+    # 'assets/sprites/background-day.png',
+    # 'assets/sprites/background-night.png',
     'assets/sprites/background1.png',
     'assets/sprites/background2.png',
     'assets/sprites/background3.png'
@@ -62,10 +63,10 @@ except NameError:
 
 def main():
     global SCREEN, FPSCLOCK
-    pygame.init()
-    FPSCLOCK = pygame.time.Clock()  # timer to control the time of loop
+    pygame.init()   
+    FPSCLOCK = pygame.time.Clock()  # control loop time
     SCREEN = pygame.display.set_mode((screen_width, screen_height))
-    pygame.display.set_caption('Gesture Bird')
+    pygame.display.set_caption('gesture bird')
 
     # numbers sprites for score display
     IMAGES['numbers'] = (
@@ -140,13 +141,10 @@ def showWelcomeAnimation():
     playerIndexGen = cycle([0, 1, 2, 1])
     # iterator used to change playerIndex after every 5th iteration
     loopIter = 0
-
     playerx = int(screen_width * 0.2)
     playery = int((screen_height - IMAGES['player'][0].get_height()) / 2)
-
     messagex = int((screen_width - IMAGES['message'].get_width()) / 2)
     messagey = int(screen_height * 0.12)
-
     basex = 0
     # amount by which base can maximum shift to left
     baseShift = IMAGES['base'].get_width() - IMAGES['background'].get_width()
@@ -180,6 +178,7 @@ def showWelcomeAnimation():
                     (playerx, playery + playerShmVals['val']))
         SCREEN.blit(IMAGES['message'], (messagex, messagey))
         SCREEN.blit(IMAGES['base'], (basex, BASEY))
+
         pygame.display.update()
         FPSCLOCK.tick(FPS)
 
@@ -200,6 +199,7 @@ def mainGame(movementInfo):
         {'x': screen_width + 200, 'y': newPipe1[0]['y']},
         {'x': screen_width + 200 + (screen_width / 2), 'y': newPipe2[0]['y']},
     ]
+
     # list of lowerpipe
     lowerPipes = [
         {'x': screen_width + 200, 'y': newPipe1[1]['y']},
@@ -207,6 +207,7 @@ def mainGame(movementInfo):
     ]
 
     pipeVelX = -4
+
     # player velocity, max velocity, downward accleration, accleration on flap
     playerVelY    =  -9   # player's velocity along Y, default same as playerFlapped
     playerMaxVelY =  10   # max vel along Y, max descend speed
@@ -218,11 +219,12 @@ def mainGame(movementInfo):
     playerFlapAcc =  -9   # players speed on flapping
     playerFlapped = False # True when player flaps
 
-    frame_rate = cap.get(5)
+    frame_rate = cap.get(5) 
     print("frame rate:", frame_rate)
     count=0
     while True:
         ret, frame = cap.read()
+
         GrayImage = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         h, w = frame.shape[:2]
         h, w = map(int, [h / 2, w / 3])
@@ -230,67 +232,78 @@ def mainGame(movementInfo):
         cv2.rectangle(frame, (x + 60, y + 45), (x + w + 60, y + h + 45), (0, 255, 0), 2)
         hand = frame[y + 45:(y + h + 45), x + 60:(x + w + 60)]
 
-        gray = cv2.cvtColor(hand, cv2.COLOR_BGR2GRAY)
+        # skin detection
+        img_YCrCb = cv2.cvtColor(hand, cv2.COLOR_BGR2YCrCb)
+        lower = np.array([50, 135, 85])
+        upper = np.array([255, 180, 135])
+        YCrCb_mask = cv2.inRange(img_YCrCb, lower, upper)
+        YCrCb_mask = cv2.morphologyEx(YCrCb_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        YCrCb_res = cv2.bitwise_and(hand, hand, mask = YCrCb_mask)
+        cv2.imshow('skin', YCrCb_res)
+
+        gray = cv2.cvtColor(YCrCb_res, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5,), 2)
         th3 = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
         ret, res = cv2.threshold(th3, 70, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        cv2.rectangle(res, (10, 10), (450, 450), (55, 255, 155), 0)
-        out = res[10:450, 10:450]
-        kernel = np.ones((5, 5), np.uint8)
-        out = cv2.morphologyEx(out, cv2.MORPH_CLOSE, kernel)
+        kernel = np.ones((3, 3), np.uint8)
+        out = cv2.morphologyEx(res, cv2.MORPH_CLOSE, kernel)
 
-        """
-        # 运用高斯模型进行拟合，在两个标准差内设置为0，在两个标准差外设置为255
-        fgmk = model_image.apply(hand)
-        # 使用形态学的开运算做背景的去除
-        fgmk = cv2.morphologyEx(fgmk, cv2.MORPH_OPEN, kernel)
-        # cv2.findContours计算fgmk的轮廓
-        contours = cv2.findContours(fgmk, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
-        """
+        cv2.imshow('gesture', out)
+        cv2.imshow('frame', frame)
+
+
+        img_HSV = cv2.cvtColor(hand, cv2.COLOR_BGR2HSV)
+        lower = np.array([1, 30, 0])
+        upper = np.array([17, 170, 255])
+        HSV_mask = cv2.inRange(img_HSV, lower, upper)
+        HSV_mask = cv2.morphologyEx(HSV_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        HSV_res = cv2.bitwise_and(hand, hand, mask = HSV_mask)
+        # erorsion = cv2.erode(HSV_res, k)
+        # dilation = cv2.dilate(erorsion, k)
+        # dia = cv2.dilate(HSV_res, k)
+        # ero = cv2.erode(dia, k)
+        # contours = cv2.findContours(HSV_res, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
+        # cv2.imshow('coutours', contours)
+        # edge = cv2.Canny(dilation, 50, 200)
+        # res = 255 - edge
+        # cv2.imshow('edge', res)
+
+        # fgmk = model_image.apply(hand)
+        # fgmk = cv2.morphologyEx(fgmk, cv2.MORPH_OPEN, kernel)
+        # contours = cv2.findContours(fgmk, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
 
         image_grayscale = cv2.cvtColor(hand, cv2.COLOR_BGR2GRAY)
         image_grayscale_blurred = cv2.GaussianBlur(image_grayscale, (15, 15), 0)
-        im = cv2.resize(image_grayscale_blurred, (28, 28), interpolation=cv2.INTER_AREA)
-        im = np.resize(im, (28, 28, 1))
-        im = np.expand_dims(im, axis=0)
-
-        pred_probab, pred_class = keras_predict(model, im)
+        im3 = cv2.resize(image_grayscale_blurred, (28, 28), interpolation=cv2.INTER_AREA)
+        im4 = np.resize(im3, (28, 28, 1))
+        im5 = np.expand_dims(im4, axis=0)
+        pred_probab, pred_class = keras_predict(model, im5)
         sign = prediction(pred_class)
 
-        cv2.imshow('fgmk', out)
-        cv2.imshow('frame', frame)
-
-        if cv2.waitKey(1) == 27:  # ESC break
+        if cv2.waitKey(1) == 27:  # ESC
             break
         
         for event in pygame.event.get():
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                 pygame.quit()
                 sys.exit()
-            # 接收到指令时，上升一格
-            '''
-            if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
-                if playery > -2 * IMAGES['player'][0].get_height():      #操作
-                    playerVelY = playerFlapAcc     #改为上升姿势
-                    playerFlapped = True
-                    SOUNDS['wing'].play()    #飞行音效    
-            '''
-        if sign == 1 or sign == 2 or sign == 3:
-            count = count + 1
-            if count < 6 and playery > -2 * IMAGES['player'][0].get_height():  # 操作
-                playerVelY = playerFlapAcc  # 改为上升姿势
+
+        if sign == 1 or sign == 2:
+            count = count+1
+            if count < 6 and playery > -2 * IMAGES['player'][0].get_height():
+                playerVelY = playerFlapAcc  # up gesture
                 playerFlapped = True
-                SOUNDS['wing'].play()  # 飞行音效
+                SOUNDS['wing'].play()
                 print("count:")
                 print(count)
             else:
-                count=0
+                count = 0
                 print("clear")
 
         # check for crash here
         crashTest = checkCrash({'x': playerx, 'y': playery, 'index': playerIndex},
                                upperPipes, lowerPipes)
-        if crashTest[0]:   # fall on ground or hit the pipes: game over
+        if crashTest[0]:
             return {
                 'y': playery,
                 'groundCrash': crashTest[1],
@@ -325,7 +338,6 @@ def mainGame(movementInfo):
             playerVelY += playerAccY
         if playerFlapped:
             playerFlapped = False
-
             # more rotation to cover the threshold (calculated in visible rotation)
             playerRot = 45
 
@@ -526,38 +538,33 @@ def getHitmask(image):
             mask[x].append(bool(image.get_at((x,y))[3]))
     return mask
 
-# Gesture recognition part
-def crop_image(image, x, y, width, height):
-    return image[y : y+height, x : x+width]
+def crop_image(image,x,y,width,height):
+    return image[y:y+height,x:x+width]
 
 def prediction(pred):
-    if pred == 0 or pred == 4 or pred == 12:
-        sign = 3
+    if  pred == 0 or pred == 4 or pred == 11 or pred == 12 or pred == 20:
+        sign = 2
     elif pred == 5:
         sign = 1
-        # print('start')
-    elif pred == 21 or pred == 3 or pred == 22 or pred == 20:
-        sign=2
     else:
-        sign=0
-    print('sign': sign)
+        sign = 0
+    print(sign)
     return sign
 
 def keras_process_image(img):
     image_x = 28
     image_y = 28
-    img = cv2.resize(img, (1,image_x, image_y), interpolation=cv2.INTER_AREA)
+    img=cv2.resize(img,(1,28,28),interpolation=cv2.INTER_AREA)
     return img
 
-# predict
-def keras_predict(model, image):
-    data = np.asarray(image, dtype="int32")
+def keras_predict(model,image):
+    data = np.asarray(image,dtype="int32")
     pred_probab = model.predict(data)[0]
     pred_class = list(pred_probab).index(max(pred_probab))
     return max(pred_probab), pred_class
 
 cap = cv2.VideoCapture(0)
-keras_predict(model,np.zeros((1,28,28,1),dtype=np.uint8))
+keras_predict(model, np.zeros((1,28,28,1), dtype=np.uint8))
 
 if __name__=='__main__':
     pipes_gap = 160  # gap between upper and lower part of pipe
